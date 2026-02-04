@@ -1,0 +1,92 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master, main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ master, main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Checkout EdgeCommon
+      uses: actions/checkout@v4
+      with:
+        repository: Starktomy/EdgeCommon
+        path: EdgeCommon
+
+    - name: Setup workspace
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/../EdgeCommon
+        cp -r EdgeCommon/* $GITHUB_WORKSPACE/../EdgeCommon/
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build and Package
+      run: |
+        VERSION=${GITHUB_REF_NAME:-dev}
+        GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o edge-admin ./cmd/edge-admin
+
+        # 创建打包目录结构
+        mkdir -p package/edge-admin/bin
+        mkdir -p package/edge-admin/configs
+        mkdir -p package/edge-admin/logs
+        mkdir -p package/edge-admin/web
+
+        # 复制文件
+        mv edge-admin package/edge-admin/bin/
+        cp build/configs/server.template.yaml package/edge-admin/configs/ 2>/dev/null || true
+        cp -r web/public package/edge-admin/web/ 2>/dev/null || true
+        cp -r web/views package/edge-admin/web/ 2>/dev/null || true
+
+        # 打包
+        cd package && zip -r ../edge-admin-${{ matrix.goos }}-${{ matrix.goarch }}-${VERSION}.zip edge-admin
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: edge-admin-${{ matrix.goos }}-${{ matrix.goarch }}
+        path: "*.zip"
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
+
+    - name: List artifacts
+      run: ls -la artifacts/
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: artifacts/*.zip
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
