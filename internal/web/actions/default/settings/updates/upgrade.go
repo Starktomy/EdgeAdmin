@@ -4,8 +4,10 @@ package updates
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
+	"sync/atomic"
 	"time"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/utils"
@@ -14,9 +16,11 @@ import (
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/default/settings/updates/updateutils"
 )
 
-var upgradeProgress float32
-var isUpgrading = false
-var isUpgradingDB = false
+var upgradeProgress atomic.Uint32
+var isUpgrading atomic.Bool
+var isUpgradingDB atomic.Bool
+
+func upgradeProgressValue() float32 { return math.Float32frombits(upgradeProgress.Load()) }
 
 type UpgradeAction struct {
 	actionutils.ParentAction
@@ -24,35 +28,44 @@ type UpgradeAction struct {
 
 func (this *UpgradeAction) RunGet(params struct {
 }) {
-	this.Data["isUpgrading"] = isUpgrading
-	this.Data["isUpgradingDB"] = isUpgradingDB
-	this.Data["upgradeProgress"] = fmt.Sprintf("%.2f", upgradeProgress*100)
+	this.Data["isUpgrading"] = isUpgrading.Load()
+	this.Data["isUpgradingDB"] = isUpgradingDB.Load()
+	this.Data["upgradeProgress"] = fmt.Sprintf("%.2f", upgradeProgressValue()*100)
 	this.Success()
 }
 
 func (this *UpgradeAction) RunPost(params struct {
 	Url string
+
+	CSRF *actionutils.CSRF
 }) {
-	if isUpgrading {
+	if !isUpgrading.CompareAndSwap(false, true) {
 		this.Success()
 		return
 	}
 
-	isUpgrading = true
-	upgradeProgress = 0
+	upgradeProgress.Store(0)
 
 	defer func() {
-		isUpgrading = false
+		isUpgrading.Store(false)
 	}()
 
 	var manager = utils.NewUpgradeManager("admin", params.Url)
 	var ticker = time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		for range ticker.C {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
 			if manager.IsDownloading() {
 				var progress = manager.Progress()
 				if progress >= 0 {
-					upgradeProgress = progress
+					upgradeProgress.Store(math.Float32bits(progress))
 				}
 			} else {
 				return
@@ -68,7 +81,7 @@ func (this *UpgradeAction) RunPost(params struct {
 	// try to exec local 'edge-api upgrade'
 	exePath, ok := updateutils.CheckLocalAPINode(this.RPC(), this.AdminContext())
 	if ok && len(exePath) > 0 {
-		isUpgradingDB = true
+		isUpgradingDB.Store(true)
 		var before = time.Now()
 		var cmd = executils.NewCmd(exePath, "upgrade")
 		_ = cmd.Run()
@@ -78,7 +91,7 @@ func (this *UpgradeAction) RunPost(params struct {
 		if costSeconds < 3 {
 			time.Sleep(3 * time.Second)
 		}
-		isUpgradingDB = false
+		isUpgradingDB.Store(false)
 	}
 
 	// restart

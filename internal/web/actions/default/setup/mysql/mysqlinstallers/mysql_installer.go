@@ -20,6 +20,7 @@ import (
 	"time"
 
 	executils "github.com/TeaOSLab/EdgeAdmin/internal/utils/exec"
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/default/setup/mysql/mysqlinstallers/utils"
 	stringutil "github.com/iwind/TeaGo/utils/string"
 	timeutil "github.com/iwind/TeaGo/utils/time"
@@ -326,7 +327,7 @@ func (this *MySQLInstaller) InstallFromFile(xzFilePath string, targetDir string)
 
 		// write password to file
 		var passwordFile = baseDir + "/generated-password.txt"
-		err = os.WriteFile(passwordFile, []byte(generatedPassword), 0666)
+		err = securefs.WriteFile(passwordFile, []byte(generatedPassword))
 		if err != nil {
 			return fmt.Errorf("write password failed: %w", err)
 		}
@@ -389,7 +390,7 @@ func (this *MySQLInstaller) InstallFromFile(xzFilePath string, targetDir string)
 	}
 	this.password = newPassword
 	var passwordFile = baseDir + "/generated-password.txt"
-	err = os.WriteFile(passwordFile, []byte(this.password), 0666)
+	err = securefs.WriteFile(passwordFile, []byte(this.password))
 	if err != nil {
 		return fmt.Errorf("write generated file failed: %w", err)
 	}

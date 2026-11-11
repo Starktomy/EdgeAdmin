@@ -5,11 +5,11 @@ package configs
 import (
 	"fmt"
 	"net/url"
-	"os"
 
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/iwind/TeaGo/Tea"
 	"github.com/iwind/TeaGo/dbs"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type SimpleDBConfig struct {
@@ -43,7 +43,7 @@ func (this *SimpleDBConfig) GenerateOldConfig(targetFile string) error {
 		return encodeErr
 	}
 
-	err := os.WriteFile(targetFile, oldConfigYAML, 0666)
+	err := securefs.WriteFile(targetFile, oldConfigYAML)
 	if err != nil {
 		return fmt.Errorf("create database config file failed: %w", err)
 	}

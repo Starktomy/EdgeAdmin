@@ -93,6 +93,7 @@ func (this *SessionManager) WriteItem(sid string, key string, value string) bool
 	})
 	if err != nil {
 		logs.Println("SESSION", "write sid:'"+sid+"' key:'"+key+"' failed: "+err.Error())
+		return false
 	}
 
 	return true

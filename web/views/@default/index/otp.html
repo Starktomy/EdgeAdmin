@@ -14,7 +14,8 @@
     <script type="text/javascript" src="/js/md5.min.js"></script>
     <script type="text/javascript" src="/js/utils.min.js"></script>
     <script type="text/javascript" src="/js/sweetalert2/dist/sweetalert2.all.min.js"></script>
-    <script type="text/javascript" src="/js/components.js"></script>
+    <script type="text/javascript" src="/js/security.js"></script>
+	<script type="text/javascript" src="/js/components.js"></script>
 </head>
 <body>
 <div>
@@ -23,6 +24,7 @@
     <div class="form-box">
         <form method="post" class="ui form" data-tea-action="$" data-tea-before="submitBefore"
               data-tea-done="submitDone" data-tea-success="submitSuccess" autocomplete="off">
+            <csrf-token></csrf-token>
             <input type="hidden" name="sid" :value="sid"/>
             <input type="hidden" name="remember" :value="remember ? 1 : 0"/>
             <div class="ui segment stacked">

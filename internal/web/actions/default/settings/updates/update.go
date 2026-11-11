@@ -18,6 +18,8 @@ type UpdateAction struct {
 
 func (this *UpdateAction) RunPost(params struct {
 	AutoCheck bool
+
+	CSRF *actionutils.CSRF
 }) {
 	defer this.CreateLogInfo(codes.AdminUpdate_LogUpdateCheckSettings)
 

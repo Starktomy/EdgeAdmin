@@ -2,13 +2,19 @@
 
 package files
 
-import "github.com/iwind/TeaGo"
+import (
+	"github.com/TeaOSLab/EdgeAdmin/internal/configloaders"
+	"github.com/TeaOSLab/EdgeAdmin/internal/web/helpers"
+	"github.com/iwind/TeaGo"
+)
 
 func init() {
 	TeaGo.BeforeStart(func(server *TeaGo.Server) {
 		server.
 			Prefix("/files").
 			Get("/file", new(FileAction)).
+			Helper(helpers.NewUserMustAuth(configloaders.AdminModuleCodeSetting)).
+			Get("/private", new(PrivateFileAction)).
 			EndAll()
 	})
 }

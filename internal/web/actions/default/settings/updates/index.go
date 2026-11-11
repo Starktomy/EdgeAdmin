@@ -33,10 +33,10 @@ func (this *IndexAction) RunGet(params struct {
 	this.Data["doCheck"] = params.DoCheck
 
 	// 是否正在升级
-	this.Data["isUpgrading"] = isUpgrading
-	this.Data["isUpgradingDB"] = isUpgradingDB
-	this.Data["upgradeProgress"] = fmt.Sprintf("%.2f", upgradeProgress * 100)
-	if isUpgrading {
+	this.Data["isUpgrading"] = isUpgrading.Load()
+	this.Data["isUpgradingDB"] = isUpgradingDB.Load()
+	this.Data["upgradeProgress"] = fmt.Sprintf("%.2f", upgradeProgressValue()*100)
+	if isUpgrading.Load() {
 		this.Data["doCheck"] = false
 	}
 

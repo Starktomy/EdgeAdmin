@@ -78,6 +78,9 @@ function build() {
 	rm -rf "$DIST"/web/public/js/components
 	rm -f "$DIST"/web/public/js/components.src.js
 	cp "$ROOT"/configs/server.template.yaml "$DIST"/configs/
+	cp "$ROOT"/configs/upgrade-trust.template.json "$DIST"/configs/
+	mkdir -p "$DIST"/doc
+	cp "$ROOT"/../doc/signed-upgrades.md "$ROOT"/../doc/admin-security.md "$DIST"/doc/
 
 	# change _plus.[ext] to .[ext]
 	if [ "${TAG}" = "plus" ]; then

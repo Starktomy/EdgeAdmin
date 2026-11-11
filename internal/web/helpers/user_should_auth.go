@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/configloaders"
@@ -61,13 +62,30 @@ func (this *UserShouldAuth) BeforeAction(actionPtr actions.ActionWrapper, paramN
 }
 
 // StoreAdmin 存储用户名到SESSION
-func (this *UserShouldAuth) StoreAdmin(adminId int64, remember bool, localSid string) {
-	loginutils.SetCookie(this.action, remember)
+func (this *UserShouldAuth) StoreAdmin(adminId int64, remember bool, localSid string) error {
+	if adminId <= 0 {
+		return errors.New("invalid administrator")
+	}
+	newSID, err := loginutils.NewSessionID()
+	if err != nil {
+		return err
+	}
 	var session = this.action.Session()
-	session.Write("adminId", numberutils.FormatInt64(adminId))
-	session.Write("@fingerprint", loginutils.CalculateClientFingerprint(this.action))
-	session.Write("@ip", loginutils.RemoteIP(this.action))
-	session.Write("@localSid", localSid)
+	oldSession := *session
+	session.SetSid(newSID)
+	if !session.Write("adminId", numberutils.FormatInt64(adminId)) ||
+		!session.Write("@fingerprint", loginutils.CalculateClientFingerprint(this.action)) ||
+		!session.Write("@ip", loginutils.RemoteIP(this.action)) ||
+		!session.Write("@localSid", localSid) {
+		session.Delete()
+		session.SetSid(oldSession.Sid)
+		return errors.New("could not persist the authenticated session")
+	}
+	securityConfig, _ := configloaders.LoadSecurityConfig()
+	remember = remember && securityConfig != nil && securityConfig.AllowRememberLogin
+	loginutils.SetCookie(this.action, remember)
+	oldSession.Delete()
+	return nil
 }
 
 func (this *UserShouldAuth) IsUser() bool {

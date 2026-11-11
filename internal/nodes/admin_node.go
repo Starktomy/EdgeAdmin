@@ -14,20 +14,19 @@ import (
 	"time"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/configloaders"
-	"github.com/TeaOSLab/EdgeAdmin/internal/configs"
 	teaconst "github.com/TeaOSLab/EdgeAdmin/internal/const"
 	"github.com/TeaOSLab/EdgeAdmin/internal/events"
 	"github.com/TeaOSLab/EdgeAdmin/internal/utils"
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/TeaOSLab/EdgeCommon/pkg/nodeconfigs"
 	"github.com/iwind/TeaGo"
 	"github.com/iwind/TeaGo/Tea"
 	"github.com/iwind/TeaGo/lists"
 	"github.com/iwind/TeaGo/logs"
 	"github.com/iwind/TeaGo/maps"
-	"github.com/iwind/TeaGo/rands"
 	"github.com/iwind/TeaGo/types"
 	"github.com/iwind/gosock/pkg/gosock"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 var SharedAdminNode *AdminNode = nil
@@ -43,10 +42,6 @@ func NewAdminNode() *AdminNode {
 
 func (this *AdminNode) Run() {
 	SharedAdminNode = this
-
-	// 启动管理界面
-	var secret = this.genSecret()
-	configs.Secret = secret
 
 	// 本地Sock
 	err := this.listenSock()
@@ -306,7 +301,7 @@ func (this *AdminNode) startAPINode() {
 			if err == nil {
 				data, err := os.ReadFile(path)
 				if err == nil {
-					err = os.WriteFile(configPath, data, 0666)
+					err = securefs.WriteFile(configPath, data)
 					if err == nil {
 						logs.Println("[NODE]recover 'edge-api/configs/api.yaml' from '" + path + "'")
 						canStart = true
@@ -332,7 +327,7 @@ func (this *AdminNode) startAPINode() {
 			if err == nil {
 				data, err := os.ReadFile(path)
 				if err == nil {
-					err = os.WriteFile(dbPath, data, 0666)
+					err = securefs.WriteFile(dbPath, data)
 					if err == nil {
 						logs.Println("[NODE]recover 'edge-api/configs/db.yaml' from '" + path + "'")
 						break
@@ -352,18 +347,6 @@ func (this *AdminNode) startAPINode() {
 			this.subPIDs = append(this.subPIDs, cmd.Process.Pid)
 		}
 	}
-}
-
-// 生成Secret
-func (this *AdminNode) genSecret() string {
-	tmpFile := os.TempDir() + "/edge-admin-secret.tmp"
-	data, err := os.ReadFile(tmpFile)
-	if err == nil && len(data) == 32 {
-		return string(data)
-	}
-	secret := rands.String(32)
-	_ = os.WriteFile(tmpFile, []byte(secret), 0666)
-	return secret
 }
 
 // 监听本地sock

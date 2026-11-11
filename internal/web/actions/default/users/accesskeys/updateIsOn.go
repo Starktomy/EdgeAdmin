@@ -13,6 +13,8 @@ type UpdateIsOnAction struct {
 func (this *UpdateIsOnAction) RunPost(params struct {
 	AccessKeyId int64
 	IsOn        bool
+
+	CSRF *actionutils.CSRF
 }) {
 	defer this.CreateLogInfo(codes.UserAccessKey_LogUpdateUserAccessKeyIsOn, params.AccessKeyId)
 

@@ -4,6 +4,7 @@ import (
 	"mime"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/actionutils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/pb"
@@ -52,6 +53,12 @@ func (this *ImageAction) RunGet(params struct {
 		mimeType = "image/png"
 	}
 
+	if !strings.HasPrefix(mimeType, "image/") || mimeType == "image/svg+xml" {
+		this.NotFound("image", params.FileId)
+		return
+	}
+	this.AddHeader("X-Content-Type-Options", "nosniff")
+	this.AddHeader("Content-Security-Policy", "default-src 'none'; sandbox")
 	this.AddHeader("Last-Modified", "Fri, 06 Sep 2019 08:29:50 GMT")
 	this.AddHeader("Content-Type", mimeType)
 	this.AddHeader("Content-Length", strconv.FormatInt(file.Size, 10))

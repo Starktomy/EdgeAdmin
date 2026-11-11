@@ -12,6 +12,7 @@ import (
 	"github.com/TeaOSLab/EdgeAdmin/internal/configs"
 	"github.com/TeaOSLab/EdgeAdmin/internal/nodes"
 	"github.com/TeaOSLab/EdgeAdmin/internal/rpc"
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/actionutils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/configutils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/pb"
@@ -21,7 +22,7 @@ import (
 	"github.com/iwind/TeaGo/logs"
 	"github.com/iwind/TeaGo/maps"
 	"github.com/iwind/gosock/pkg/gosock"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type InstallAction struct {
@@ -103,7 +104,7 @@ func (this *InstallAction) RunPost(params struct {
 			this.Fail("生成数据库配置失败：" + err.Error())
 			return
 		}
-		err = os.WriteFile(apiNodeDir+"/configs/db.yaml", dbConfigData, 0666)
+		err = securefs.WriteFile(apiNodeDir+"/configs/db.yaml", dbConfigData)
 		if err != nil {
 			this.Fail("保存数据库配置失败（db.yaml）：" + err.Error())
 			return
@@ -123,17 +124,17 @@ func (this *InstallAction) RunPost(params struct {
 		}
 		for _, backupDir := range backupDirs {
 			stat, err := os.Stat(backupDir)
-			if err == nil && stat.IsDir() {
-				_ = os.WriteFile(backupDir+"/db.yaml", dbConfigData, 0666)
+			if err == nil && stat.IsDir() && securefs.PrivateDir(backupDir) == nil {
+				_ = securefs.WriteFile(backupDir+"/db.yaml", dbConfigData)
 			} else if err != nil && os.IsNotExist(err) {
-				err = os.Mkdir(backupDir, 0777)
+				err = securefs.PrivateDir(backupDir)
 				if err == nil {
-					_ = os.WriteFile(backupDir+"/db.yaml", dbConfigData, 0666)
+					_ = securefs.WriteFile(backupDir+"/db.yaml", dbConfigData)
 				}
 			}
 		}
 
-		err = os.WriteFile(Tea.ConfigFile("/api_db.yaml"), dbConfigData, 0666)
+		err = securefs.WriteFile(Tea.ConfigFile("/api_db.yaml"), dbConfigData)
 		if err != nil {
 			this.Fail("保存数据库配置失败（api_db.yaml）：" + err.Error())
 			return
@@ -146,12 +147,12 @@ func (this *InstallAction) RunPost(params struct {
 		}
 		for _, backupDir := range backupDirs {
 			stat, err := os.Stat(backupDir)
-			if err == nil && stat.IsDir() {
-				_ = os.WriteFile(backupDir+"/api_db.yaml", dbConfigData, 0666)
+			if err == nil && stat.IsDir() && securefs.PrivateDir(backupDir) == nil {
+				_ = securefs.WriteFile(backupDir+"/api_db.yaml", dbConfigData)
 			} else if err != nil && os.IsNotExist(err) {
-				err = os.Mkdir(backupDir, 0777)
+				err = securefs.PrivateDir(backupDir)
 				if err == nil {
-					_ = os.WriteFile(backupDir+"/api_db.yaml", dbConfigData, 0666)
+					_ = securefs.WriteFile(backupDir+"/api_db.yaml", dbConfigData)
 				}
 			}
 		}

@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 
 	teaconst "github.com/TeaOSLab/EdgeAdmin/internal/const"
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/iwind/TeaGo/Tea"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const ConfigFileName = "api_admin.yaml"
@@ -73,7 +74,7 @@ func LoadAPIConfig() (*APIConfig, error) {
 
 	if !isFromLocal {
 		// 恢复文件
-		_ = os.WriteFile(realFile, data, 0666)
+		_ = securefs.WriteFile(realFile, data)
 	}
 
 	// 自动生成新配置文件
@@ -152,46 +153,19 @@ func (this *APIConfig) WriteFile(path string) error {
 		return err
 	}
 
-	err = os.WriteFile(path, data, 0666)
-	if err != nil {
+	if err := securefs.WriteFile(path, data); err != nil {
 		return err
 	}
-
-	// 写入 ~/ 和 /etc/ 目录，因为是备份需要，所以不需要提示错误信息
-	// 写入 ~/.edge-admin/
-	// 这个用来判断用户是否为重装，所以比较重要
-	var filename = filepath.Base(path)
-	homeDir, homeErr := os.UserHomeDir()
-	if homeErr == nil {
-		dir := homeDir + "/." + teaconst.ProcessName
-		stat, err := os.Stat(dir)
-		if err == nil && stat.IsDir() {
-			err = os.WriteFile(dir+"/"+filename, data, 0666)
-			if err != nil {
-				return err
-			}
-		} else if err != nil && os.IsNotExist(err) {
-			err = os.Mkdir(dir, 0777)
-			if err == nil {
-				err = os.WriteFile(dir+"/"+filename, data, 0666)
-				if err != nil {
-					return err
-				}
-			}
-		}
+	filename := filepath.Base(path)
+	dirs := []string{"/etc/" + teaconst.ProcessName}
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, homeDir+"/."+teaconst.ProcessName)
 	}
-
-	// 写入 /etc/edge-admin
-	{
-		var dir = "/etc/" + teaconst.ProcessName
-		stat, err := os.Stat(dir)
-		if err == nil && stat.IsDir() {
-			_ = os.WriteFile(dir+"/"+filename, data, 0666)
-		} else if err != nil && os.IsNotExist(err) {
-			err = os.Mkdir(dir, 0777)
-			if err == nil {
-				_ = os.WriteFile(dir+"/"+filename, data, 0666)
-			}
+	// Backups may be unavailable to an unprivileged service; never fall back to
+	// publishing credentials in a directory with permissive permissions.
+	for _, dir := range dirs {
+		if err := securefs.PrivateDir(dir); err == nil {
+			_ = securefs.WriteFile(filepath.Join(dir, filename), data)
 		}
 	}
 

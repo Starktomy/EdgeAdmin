@@ -42,6 +42,8 @@ func (this *IndexAction) RunPost(params struct {
 	Password2 string
 
 	Must *actions.Must
+
+	CSRF *actionutils.CSRF
 }) {
 	defer this.CreateLogInfo(codes.AdminLogin_LogUpdateLogin)
 

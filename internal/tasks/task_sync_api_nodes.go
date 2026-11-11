@@ -2,11 +2,11 @@ package tasks
 
 import (
 	"context"
-	"crypto/tls"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/configs"
@@ -19,8 +19,6 @@ import (
 	"github.com/iwind/TeaGo/Tea"
 	"github.com/iwind/TeaGo/logs"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 )
 
 func init() {
@@ -129,7 +127,7 @@ func (this *SyncAPINodesTask) testEndpoints(endpoints []string) bool {
 	var wg = sync.WaitGroup{}
 	wg.Add(len(endpoints))
 
-	var ok = false
+	var ok atomic.Bool
 
 	for _, endpoint := range endpoints {
 		go func(endpoint string) {
@@ -146,22 +144,21 @@ func (this *SyncAPINodesTask) testEndpoints(endpoints []string) bool {
 			}()
 			var conn *grpc.ClientConn
 
-			if u.Scheme == "http" {
-				conn, err = grpc.DialContext(ctx, u.Host, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-			} else if u.Scheme == "https" {
-				conn, err = grpc.DialContext(ctx, u.Host, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-					InsecureSkipVerify: true,
-				})), grpc.WithBlock())
+			transportCredentials, err := rpc.TransportCredentials(u)
+			if err != nil {
+				return
 			}
+			conn, err = grpc.DialContext(ctx, u.Host, grpc.WithTransportCredentials(transportCredentials), grpc.WithBlock())
+
 			if err != nil {
 				return
 			}
 			_ = conn.Close()
 
-			ok = true
+			ok.Store(true)
 		}(endpoint)
 	}
 	wg.Wait()
 
-	return ok
+	return ok.Load()
 }

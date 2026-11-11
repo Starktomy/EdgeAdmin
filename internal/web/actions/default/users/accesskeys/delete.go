@@ -12,6 +12,8 @@ type DeleteAction struct {
 
 func (this *DeleteAction) RunPost(params struct {
 	AccessKeyId int64
+
+	CSRF *actionutils.CSRF
 }) {
 	defer this.CreateLogInfo(codes.UserAccessKey_LogDeleteUserAccessKey, params.AccessKeyId)
 

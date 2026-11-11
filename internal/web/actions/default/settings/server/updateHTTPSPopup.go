@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/utils"
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/actionutils"
 	adminserverutils "github.com/TeaOSLab/EdgeAdmin/internal/web/actions/default/settings/server/admin-server-utils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/langs/codes"
@@ -124,11 +125,11 @@ func (this *UpdateHTTPSPopupAction) RunPost(params struct {
 			this.ErrorPage(err)
 			return
 		}
-		err = os.WriteFile(Tea.ConfigFile("https.key.pem"), certConfig.KeyData, 0666)
+		err = securefs.WriteFile(Tea.ConfigFile("https.key.pem"), certConfig.KeyData)
 		if err != nil {
 			this.Fail("保存密钥失败：" + err.Error())
 		}
-		err = os.WriteFile(Tea.ConfigFile("https.cert.pem"), certConfig.CertData, 0666)
+		err = securefs.WriteFile(Tea.ConfigFile("https.cert.pem"), certConfig.CertData)
 		if err != nil {
 			this.Fail("保存证书失败：" + err.Error())
 		}

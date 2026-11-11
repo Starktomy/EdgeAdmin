@@ -24,7 +24,6 @@ import (
 	"github.com/TeaOSLab/EdgeCommon/pkg/systemconfigs"
 	"github.com/iwind/TeaGo/actions"
 	"github.com/iwind/TeaGo/lists"
-	"github.com/iwind/TeaGo/rands"
 	"github.com/iwind/TeaGo/types"
 	stringutil "github.com/iwind/TeaGo/utils/string"
 )
@@ -51,7 +50,7 @@ func (this *IndexAction) RunGet(params struct {
 	}
 
 	// 是否自动从HTTP跳转到HTTPS
-	if this.Request.TLS == nil {
+	if !loginutils.RequestIsHTTPS(this.Request) {
 		httpsPort, _ := adminserverutils.ReadServerHTTPS()
 		if httpsPort > 0 {
 			currentHost, _, err := net.SplitHostPort(this.Request.Host)
@@ -65,7 +64,7 @@ func (this *IndexAction) RunGet(params struct {
 			}
 
 			// 如果没有前端反向代理，则跳转
-			if len(this.Request.Header.Get("X-Forwarded-For")) == 0 && len(this.Request.Header.Get("X-Real-Ip")) == 0 {
+			if !loginutils.TrustedProxy(this.Request) {
 				this.RedirectURL("https://" + newHost + this.Request.RequestURI)
 				return
 			}
@@ -98,7 +97,7 @@ func (this *IndexAction) RunGet(params struct {
 
 	var timestamp = fmt.Sprintf("%d", time.Now().Unix())
 	this.Data["token"] = stringutil.Md5(TokenKey+timestamp) + timestamp
-	this.Data["from"] = params.From
+	this.Data["from"] = loginutils.SafeRedirect(params.From)
 
 	uiConfig, err := configloaders.LoadAdminUIConfig()
 	if err != nil {
@@ -163,10 +162,6 @@ func (this *IndexAction) RunPost(params struct {
 		Field("password", params.Password).
 		Require("请输入密码")
 
-	if params.Password == stringutil.Md5("") {
-		this.FailField("password", "请输入密码")
-	}
-
 	// 检查token
 	if len(params.Token) <= 32 {
 		this.Fail("请通过登录页面登录")
@@ -187,7 +182,7 @@ func (this *IndexAction) RunPost(params struct {
 	}
 	resp, err := rpcClient.AdminRPC().LoginAdmin(rpcClient.Context(0), &pb.LoginAdminRequest{
 		Username: params.Username,
-		Password: params.Password,
+		Password: loginutils.AdminPasswordForRPC(params.Password),
 	})
 
 	if err != nil {
@@ -222,27 +217,29 @@ func (this *IndexAction) RunPost(params struct {
 	if requireOTP {
 		this.Data["remember"] = params.Remember
 
-		var sid = this.Session().Sid
-		this.Data["sid"] = sid
-		_, err = this.RPC().LoginSessionRPC().WriteLoginSessionValue(this.AdminContext(), &pb.WriteLoginSessionValueRequest{
-			Sid:   sid + "_otp",
-			Key:   "adminId",
-			Value: types.String(adminId),
-		})
+		challengeID, err := loginutils.OTPChallenges.Create(this.Session().Sid, adminId, params.Remember)
 		if err != nil {
-			this.ErrorPage(err)
+			this.Fail("二次验证尝试过多，请稍后重试")
 			return
 		}
+		this.Data["sid"] = challengeID
 		this.Success()
 		return
 	}
 
 	// 写入SESSION
 	var currentIP = loginutils.RemoteIP(&this.ActionObject)
-	var localSid = rands.HexString(32)
+	localSid, err := loginutils.NewSessionID()
+	if err != nil {
+		this.ErrorPage(err)
+		return
+	}
 	this.Data["localSid"] = localSid
 	this.Data["ip"] = currentIP
-	params.Auth.StoreAdmin(adminId, params.Remember, localSid)
+	if err := params.Auth.StoreAdmin(adminId, params.Remember, localSid); err != nil {
+		this.ErrorPage(err)
+		return
+	}
 
 	// 清理老的SESSION
 	_, err = this.RPC().LoginSessionRPC().ClearOldLoginSessions(this.AdminContext(), &pb.ClearOldLoginSessionsRequest{

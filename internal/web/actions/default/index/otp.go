@@ -21,9 +21,7 @@ import (
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/pb"
 	"github.com/iwind/TeaGo/actions"
 	"github.com/iwind/TeaGo/maps"
-	"github.com/iwind/TeaGo/rands"
 	stringutil "github.com/iwind/TeaGo/utils/string"
-	"github.com/xlzd/gotp"
 )
 
 type OtpAction struct {
@@ -56,7 +54,7 @@ func (this *OtpAction) RunGet(params struct {
 
 	var timestamp = fmt.Sprintf("%d", time.Now().Unix())
 	this.Data["token"] = stringutil.Md5(TokenKey+timestamp) + timestamp
-	this.Data["from"] = params.From
+	this.Data["from"] = loginutils.SafeRedirect(params.From)
 	this.Data["sid"] = params.Sid
 
 	uiConfig, err := configloaders.LoadAdminUIConfig()
@@ -84,32 +82,19 @@ func (this *OtpAction) RunPost(params struct {
 
 	Must *actions.Must
 	Auth *helpers.UserShouldAuth
+	CSRF *actionutils.CSRF
 }) {
 	if len(params.OtpCode) == 0 {
 		this.FailField("otpCode", "请输入正确的OTP动态密码")
 		return
 	}
 
-	var sid = params.Sid
-	if len(sid) == 0 || len(sid) > 64 {
-		this.Fail("参数错误，请重新登录（001）")
+	challenge, ok := loginutils.OTPChallenges.Details(params.Sid, this.Session().Sid)
+	if !ok {
+		this.Fail("验证已过期或尝试次数过多，请重新登录")
 		return
 	}
-	sid += "_otp"
-
-	// 获取SESSION
-	sessionResp, err := this.RPC().LoginSessionRPC().FindLoginSession(this.AdminContext(), &pb.FindLoginSessionRequest{Sid: sid})
-	if err != nil {
-		this.ErrorPage(err)
-		return
-	}
-	var session = sessionResp.LoginSession
-	if session == nil || session.AdminId <= 0 {
-		this.Fail("参数错误，请重新登录（002）")
-		return
-	}
-	var adminId = session.AdminId
-
+	adminId := challenge.AdminID
 	// 检查OTP
 	otpLoginResp, err := this.RPC().LoginRPC().FindEnabledLogin(this.AdminContext(), &pb.FindEnabledLoginRequest{
 		AdminId: adminId,
@@ -119,29 +104,30 @@ func (this *OtpAction) RunPost(params struct {
 		this.ErrorPage(err)
 		return
 	}
-	if otpLoginResp.Login != nil && otpLoginResp.Login.IsOn {
-		var loginParams = maps.Map{}
-		err = json.Unmarshal(otpLoginResp.Login.ParamsJSON, &loginParams)
-		if err != nil {
-			this.ErrorPage(err)
-			return
-		}
-		var secret = loginParams.GetString("secret")
-		if gotp.NewDefaultTOTP(secret).Now() != params.OtpCode {
-			this.FailField("otpCode", "请输入正确的OTP动态密码")
-			return
-		}
+	if otpLoginResp.Login == nil || !otpLoginResp.Login.IsOn {
+		this.Fail("二次验证设置已变更，请重新登录")
+		return
+	}
+	loginParams := maps.Map{}
+	if err := json.Unmarshal(otpLoginResp.Login.ParamsJSON, &loginParams); err != nil {
+		this.ErrorPage(err)
+		return
+	}
+	challenge, ok = loginutils.OTPChallenges.Verify(params.Sid, this.Session().Sid, loginParams.GetString("secret"), params.OtpCode)
+	if !ok {
+		this.FailField("otpCode", "请输入正确的OTP动态密码；验证过期或多次失败后需重新登录")
+		return
 	}
 
 	// 写入SESSION
-	var localSid = rands.HexString(32)
+	localSid, err := loginutils.NewSessionID()
+	if err != nil {
+		this.ErrorPage(err)
+		return
+	}
 	this.Data["localSid"] = localSid
 	this.Data["ip"] = loginutils.RemoteIP(&this.ActionObject)
-	params.Auth.StoreAdmin(adminId, params.Remember, localSid)
-
-	// 删除OTP SESSION
-	_, err = this.RPC().LoginSessionRPC().DeleteLoginSession(this.AdminContext(), &pb.DeleteLoginSessionRequest{Sid: sid})
-	if err != nil {
+	if err := params.Auth.StoreAdmin(adminId, challenge.Remember, localSid); err != nil {
 		this.ErrorPage(err)
 		return
 	}

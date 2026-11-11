@@ -7,7 +7,6 @@ import (
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/default/index/loginutils"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/helpers"
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/pb"
-	"github.com/iwind/TeaGo/rands"
 )
 
 type TicketAction struct {
@@ -23,7 +22,7 @@ func (this *TicketAction) RunGet(params struct {
 	Redirect string
 	Auth     *helpers.UserShouldAuth
 }) {
-	this.Data["redirect"] = params.Redirect
+	this.Data["redirect"] = loginutils.SafeRedirect(params.Redirect)
 	var errorMsg string
 
 	defer func() {
@@ -60,9 +59,16 @@ func (this *TicketAction) RunGet(params struct {
 		return
 	}
 
-	var localSid = rands.HexString(32)
+	localSid, err := loginutils.NewSessionID()
+	if err != nil {
+		this.ErrorPage(err)
+		return
+	}
 	this.Data["localSid"] = localSid
 	this.Data["ip"] = currentIP
 
-	params.Auth.StoreAdmin(resp.LoginTicket.AdminId, false, localSid)
+	if err := params.Auth.StoreAdmin(resp.LoginTicket.AdminId, false, localSid); err != nil {
+		this.ErrorPage(err)
+		return
+	}
 }

@@ -13,6 +13,8 @@ type DeleteAction struct {
 
 func (this *DeleteAction) RunPost(params struct {
 	AdminId int64
+
+	CSRF *actionutils.CSRF
 }) {
 	defer this.CreateLogInfo(codes.Admin_LogDeleteAdmin, params.AdminId)
 

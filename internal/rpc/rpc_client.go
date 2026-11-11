@@ -2,8 +2,6 @@ package rpc
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -13,18 +11,14 @@ import (
 	"time"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/configs"
-	teaconst "github.com/TeaOSLab/EdgeAdmin/internal/const"
-	"github.com/TeaOSLab/EdgeAdmin/internal/encrypt"
 	"github.com/TeaOSLab/EdgeAdmin/internal/utils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/dao"
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/pb"
+	"github.com/TeaOSLab/EdgeCommon/pkg/rpcauth"
 	"github.com/iwind/TeaGo/lists"
-	"github.com/iwind/TeaGo/maps"
 	"github.com/iwind/TeaGo/rands"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
@@ -430,57 +424,31 @@ func (this *RPCClient) TrafficDailyStatRPC() pb.TrafficDailyStatServiceClient {
 	return pb.NewTrafficDailyStatServiceClient(this.pickConn())
 }
 
-// Context 构造Admin上下文
+// Context constructs a short-lived authenticated administrator context.
 func (this *RPCClient) Context(adminId int64) context.Context {
-	var ctx = context.Background()
-	var m = maps.Map{
-		"timestamp": time.Now().Unix(),
-		"type":      "admin",
-		"userId":    adminId,
-	}
-	method, err := encrypt.NewMethodInstance(teaconst.EncryptMethod, this.apiConfig.Secret, this.apiConfig.NodeId)
-	if err != nil {
-		utils.PrintError(err)
-		return context.Background()
-	}
-	data, err := method.Encrypt(m.AsJSON())
-	if err != nil {
-		utils.PrintError(err)
-		return context.Background()
-	}
-	var token = base64.StdEncoding.EncodeToString(data)
-	ctx = metadata.AppendToOutgoingContext(ctx, "nodeId", this.apiConfig.NodeId, "token", token)
-	return ctx
+	return this.signedContext("admin", adminId)
 }
 
-// APIContext 构造API上下文
 func (this *RPCClient) APIContext(apiNodeId int64) context.Context {
-	var ctx = context.Background()
-	var m = maps.Map{
-		"timestamp": time.Now().Unix(),
-		"type":      "api",
-		"userId":    apiNodeId,
-	}
-	method, err := encrypt.NewMethodInstance(teaconst.EncryptMethod, this.apiConfig.Secret, this.apiConfig.NodeId)
+	return this.signedContext("api", apiNodeId)
+}
+
+func (this *RPCClient) signedContext(role string, userID int64) context.Context {
+	this.locker.RLock()
+	nodeID, secret := this.apiConfig.NodeId, this.apiConfig.Secret
+	this.locker.RUnlock()
+	token, err := rpcauth.Sign(secret, nodeID, role, userID)
 	if err != nil {
 		utils.PrintError(err)
 		return context.Background()
 	}
-	data, err := method.Encrypt(m.AsJSON())
-	if err != nil {
-		utils.PrintError(err)
-		return context.Background()
-	}
-	var token = base64.StdEncoding.EncodeToString(data)
-	ctx = metadata.AppendToOutgoingContext(ctx, "nodeId", this.apiConfig.NodeId, "token", token)
-	return ctx
+	return metadata.AppendToOutgoingContext(context.Background(), "nodeId", nodeID, "token", token)
 }
 
 // UpdateConfig 修改配置
 func (this *RPCClient) UpdateConfig(config *configs.APIConfig) error {
-	this.apiConfig = config
-
 	this.locker.Lock()
+	this.apiConfig = config
 	err := this.init()
 	this.locker.Unlock()
 	return err
@@ -523,15 +491,12 @@ func (this *RPCClient) init() error {
 		var keepaliveParams = grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time: 30 * time.Second,
 		})
-		if u.Scheme == "http" {
-			conn, err = grpc.Dial(apiHost, grpc.WithTransportCredentials(insecure.NewCredentials()), callOptions, keepaliveParams)
-		} else if u.Scheme == "https" {
-			conn, err = grpc.Dial(apiHost, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
-				InsecureSkipVerify: true,
-			})), callOptions, keepaliveParams)
-		} else {
-			return errors.New("parse endpoint failed: invalid scheme '" + u.Scheme + "'")
+		transportCredentials, err := TransportCredentials(u)
+		if err != nil {
+			return err
 		}
+		conn, err = grpc.Dial(apiHost, grpc.WithTransportCredentials(transportCredentials), callOptions, keepaliveParams)
+
 		if err != nil {
 			return err
 		}

@@ -3,6 +3,7 @@
 package utils_test
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -10,11 +11,23 @@ import (
 )
 
 func TestNewUpgradeManager(t *testing.T) {
-	var manager = utils.NewUpgradeManager("admin", "")
+	downloadURL := os.Getenv("EDGE_TEST_SIGNED_UPGRADE_URL")
+	if downloadURL == "" {
+		t.Skip("live upgrade integration test requires EDGE_TEST_SIGNED_UPGRADE_URL and local release trust configuration")
+	}
+	var manager = utils.NewUpgradeManager("admin", downloadURL)
 
 	var ticker = time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		for range ticker.C {
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
 			if manager.IsDownloading() {
 				t.Logf("%.2f%%", manager.Progress()*100)
 			}

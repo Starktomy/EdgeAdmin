@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/TeaOSLab/EdgeAdmin/internal/configs"
+	"github.com/TeaOSLab/EdgeAdmin/internal/utils/securefs"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/actionutils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/configutils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/langs/codes"
@@ -16,7 +17,7 @@ import (
 	"github.com/iwind/TeaGo/actions"
 	"github.com/iwind/TeaGo/dbs"
 	"github.com/iwind/TeaGo/maps"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type UpdateAction struct {
@@ -119,7 +120,7 @@ func (this *UpdateAction) RunPost(params struct {
 	// 保存
 
 	var configFile = Tea.ConfigFile("api_db.yaml")
-	err = os.WriteFile(configFile, configYAML, 0666)
+	err = securefs.WriteFile(configFile, configYAML)
 	if err != nil {
 		this.Fail("保存配置失败：" + err.Error())
 		return

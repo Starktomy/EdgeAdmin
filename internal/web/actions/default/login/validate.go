@@ -8,7 +8,6 @@ import (
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/actionutils"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/default/index/loginutils"
 	"github.com/iwind/TeaGo/actions"
-	"github.com/iwind/TeaGo/rands"
 )
 
 type ValidateAction struct {
@@ -22,7 +21,7 @@ func (this *ValidateAction) Init() {
 func (this *ValidateAction) RunGet(params struct {
 	From string
 }) {
-	this.Data["from"] = params.From
+	this.Data["from"] = loginutils.SafeRedirect(params.From)
 
 	this.Show()
 }
@@ -58,11 +57,13 @@ func (this *ValidateAction) RunPost(params struct {
 	}
 
 	if params.LocalSid == this.Session().GetString("@localSid") {
-		isOk = true
-
 		// renew ip and local sid
 		var newIP = loginutils.RemoteIP(&this.ActionObject)
-		var newLocalSid = rands.HexString(32)
+		newLocalSid, err := loginutils.NewSessionID()
+		if err != nil {
+			return
+		}
+		isOk = true
 
 		this.Session().Write("@ip", newIP)
 		this.Session().Write("@localSid", newLocalSid)

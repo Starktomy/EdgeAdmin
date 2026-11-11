@@ -3,12 +3,12 @@
 package files
 
 import (
-	"mime"
-	"path/filepath"
+	"errors"
+	"net/http"
 
+	"github.com/TeaOSLab/EdgeAdmin/internal/configloaders"
 	"github.com/TeaOSLab/EdgeAdmin/internal/web/actions/actionutils"
 	"github.com/TeaOSLab/EdgeCommon/pkg/rpc/pb"
-	"github.com/iwind/TeaGo/types"
 )
 
 type FileAction struct {
@@ -22,42 +22,41 @@ func (this *FileAction) Init() {
 func (this *FileAction) RunGet(params struct {
 	FileId int64
 }) {
-	fileResp, err := this.RPC().FileRPC().FindEnabledFile(this.AdminContext(), &pb.FindEnabledFileRequest{FileId: params.FileId})
+	this.serveFile(params.FileId, false)
+}
+
+// PrivateFileAction requires a validated super administrator. The public
+// endpoint never promotes the backend service's credential to visitor access.
+type PrivateFileAction struct{ FileAction }
+
+func (this *PrivateFileAction) RunGet(params struct{ FileId int64 }) {
+	if this.AdminId() <= 0 {
+		this.ResponseWriter.WriteHeader(http.StatusForbidden)
+		return
+	}
+	adminResp, err := this.RPC().AdminRPC().FindEnabledAdmin(this.AdminContext(), &pb.FindEnabledAdminRequest{AdminId: this.AdminId()})
 	if err != nil {
 		this.ErrorPage(err)
 		return
 	}
-
-	var file = fileResp.File
-	if file == nil {
-		this.NotFound("File", params.FileId)
+	if adminResp.Admin == nil || !adminResp.Admin.IsOn || !adminResp.Admin.CanLogin || !adminResp.Admin.IsSuper || !configloaders.CheckAdmin(this.AdminId()) {
+		this.ResponseWriter.WriteHeader(http.StatusForbidden)
 		return
 	}
+	this.serveFile(params.FileId, true)
+}
 
-	chunkIdsResp, err := this.RPC().FileChunkRPC().FindAllFileChunkIds(this.AdminContext(), &pb.FindAllFileChunkIdsRequest{FileId: file.Id})
+func (this *FileAction) serveFile(fileID int64, allowPrivate bool) {
+	err := downloadFile(this.AdminContext(), this.ResponseWriter.Header(), &this.ActionObject, this.RPC().FileRPC(), this.RPC().FileChunkRPC(), fileID, allowPrivate)
+	if errors.Is(err, errFileForbidden) {
+		this.ResponseWriter.WriteHeader(http.StatusForbidden)
+		return
+	}
+	if errors.Is(err, errFileNotFound) {
+		this.ResponseWriter.WriteHeader(http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		this.ErrorPage(err)
-		return
-	}
-
-	this.AddHeader("Content-Length", types.String(file.Size))
-	if len(file.MimeType) > 0 {
-		this.AddHeader("Content-Type", file.MimeType)
-	} else if len(file.Filename) > 0 {
-		var ext = filepath.Ext(file.Filename)
-		var mimeType = mime.TypeByExtension(ext)
-		this.AddHeader("Content-Type", mimeType)
-	}
-
-	for _, chunkId := range chunkIdsResp.FileChunkIds {
-		chunkResp, err := this.RPC().FileChunkRPC().DownloadFileChunk(this.AdminContext(), &pb.DownloadFileChunkRequest{FileChunkId: chunkId})
-		if err != nil {
-			this.ErrorPage(err)
-			return
-		}
-		if chunkResp.FileChunk == nil {
-			continue
-		}
-		_, _ = this.Write(chunkResp.FileChunk.Data)
 	}
 }

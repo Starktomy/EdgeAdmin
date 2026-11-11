@@ -24,7 +24,7 @@ func CalculateClientFingerprint(action *actions.ActionObject) string {
 func RemoteIP(action *actions.ActionObject) string {
 	securityConfig, _ := configloaders.LoadSecurityConfig()
 
-	if securityConfig != nil {
+	if securityConfig != nil && TrustedProxy(action.Request) {
 		if len(securityConfig.ClientIPHeaderNames) > 0 {
 			var headerNames = regexp.MustCompile(`[,;\s，、；]`).Split(securityConfig.ClientIPHeaderNames, -1)
 			for _, headerName := range headerNames {
@@ -33,8 +33,8 @@ func RemoteIP(action *actions.ActionObject) string {
 					continue
 				}
 
-				var ipValue = action.Request.Header.Get(headerName)
-				if net.ParseIP(ipValue) != nil {
+				var ipValue = forwardedClient(action.Request, headerName)
+				if len(ipValue) > 0 {
 					return ipValue
 				}
 			}
@@ -74,10 +74,8 @@ func SetCookie(action *actions.ActionObject, remember bool) {
 			MaxAge:   14 * 86400,
 			HttpOnly: true,
 		}
-		if action.Request.TLS != nil {
-			cookie.SameSite = http.SameSiteStrictMode
-			cookie.Secure = true
-		}
+		cookie.SameSite = http.SameSiteStrictMode
+		cookie.Secure = RequestIsHTTPS(action.Request)
 		action.AddCookie(cookie)
 	} else {
 		var cookie = &http.Cookie{
@@ -87,10 +85,8 @@ func SetCookie(action *actions.ActionObject, remember bool) {
 			MaxAge:   0,
 			HttpOnly: true,
 		}
-		if action.Request.TLS != nil {
-			cookie.SameSite = http.SameSiteStrictMode
-			cookie.Secure = true
-		}
+		cookie.SameSite = http.SameSiteStrictMode
+		cookie.Secure = RequestIsHTTPS(action.Request)
 		action.AddCookie(cookie)
 	}
 }
@@ -104,9 +100,7 @@ func UnsetCookie(action *actions.ActionObject) {
 		MaxAge:   -1,
 		HttpOnly: true,
 	}
-	if action.Request.TLS != nil {
-		cookie.SameSite = http.SameSiteStrictMode
-		cookie.Secure = true
-	}
+	cookie.SameSite = http.SameSiteStrictMode
+	cookie.Secure = RequestIsHTTPS(action.Request)
 	action.AddCookie(cookie)
 }

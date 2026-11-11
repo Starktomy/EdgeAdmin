@@ -18,6 +18,8 @@ type IgnoreVersionAction struct {
 
 func (this *IgnoreVersionAction) RunPost(params struct {
 	Version string
+
+	CSRF *actionutils.CSRF
 }) {
 	defer this.CreateLogInfo(codes.AdminUpdate_LogIgnoreVersion, params.Version)
 

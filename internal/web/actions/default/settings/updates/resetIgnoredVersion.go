@@ -15,7 +15,9 @@ type ResetIgnoredVersionAction struct {
 	actionutils.ParentAction
 }
 
-func (this *ResetIgnoredVersionAction) RunPost(params struct{}) {
+func (this *ResetIgnoredVersionAction) RunPost(params struct {
+	CSRF *actionutils.CSRF
+}) {
 	defer this.CreateLogInfo(codes.AdminUpdate_LogResetIgnoreVersion)
 
 	valueResp, err := this.RPC().SysSettingRPC().ReadSysSetting(this.AdminContext(), &pb.ReadSysSettingRequest{Code: systemconfigs.SettingCodeCheckUpdates})
